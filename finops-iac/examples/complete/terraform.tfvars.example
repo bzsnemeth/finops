@@ -1,0 +1,23 @@
+# ──────────────────────────────────
+# FinOps Toolkit — Example Configuration
+# Copy this to terraform.tfvars and fill in your values
+# ──────────────────────────────────
+
+aws_region     = "eu-west-1"
+environment    = "production"
+project_prefix = "acme-corp"
+
+# Anomaly Detection
+anomaly_threshold = 30
+slack_webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+alert_email       = "finops@acme-corp.com"
+
+# Tagging Governance
+required_tags = ["Environment", "Team", "CostCenter", "Project"]
+generate_scp  = false
+
+# Additional tags
+tags = {
+  Owner      = "finops-team"
+  CostCenter = "infrastructure"
+}
