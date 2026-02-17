@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinOps Dashboard — Demo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.7/Recharts.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+    <style>
+        :root {
+            --bg: #0a0a0b;
+            --bg-card: #111113;
+            --bg-card-hover: #18181b;
+            --border: #222225;
+            --border-hover: #333338;
+            --text: #e4e4e7;
+            --text-muted: #71717a;
+            --text-dim: #52525b;
+            --accent: #22d3ee;
+            --accent-dim: rgba(34, 211, 238, 0.08);
+            --accent-glow: rgba(34, 211, 238, 0.15);
+            --green: #4ade80;
+            --green-dim: rgba(74, 222, 128, 0.1);
+            --orange: #fb923c;
+            --orange-dim: rgba(251, 146, 60, 0.1);
+            --red: #f87171;
+            --font-display: 'Outfit', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; scrollbar-width: thin; scrollbar-color: var(--border) var(--bg); }
+        body { font-family: var(--font-display); background: var(--bg); color: var(--text); line-height: 1.6; overflow-x: hidden; }
+        body::before {
+            content: ''; position: fixed; inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+            pointer-events: none; z-index: 9999;
+        }
+        .grid-bg {
+            position: fixed; inset: 0;
+            background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+            background-size: 60px 60px; opacity: 0.1; pointer-events: none; z-index: 0;
+        }
+        #root { position: relative; z-index: 1; }
+        .recharts-default-tooltip { display: none !important; }
+    </style>
+</head>
+<body>
+<div class="grid-bg"></div>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useMemo } = React;
+const {
+    AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
+    XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
+} = Recharts;
+
+// ── DATA ──────────────────────────────────────────────────────────────
+const monthlySpend = [
+    { month: "Jan", actual: 387000, forecast: 392000, budget: 420000 },
+    { month: "Feb", actual: 401000, forecast: 398000, budget: 420000 },
+    { month: "Mar", actual: 412000, forecast: 410000, budget: 420000 },
+    { month: "Apr", actual: 398000, forecast: 405000, budget: 420000 },
+    { month: "May", actual: 378000, forecast: 385000, budget: 420000 },
+    { month: "Jun", actual: 352000, forecast: 360000, budget: 420000 },
+    { month: "Jul", actual: 341000, forecast: 348000, budget: 400000 },
+    { month: "Aug", actual: 329000, forecast: 335000, budget: 400000 },
+    { month: "Sep", actual: 318000, forecast: 322000, budget: 400000 },
+    { month: "Oct", actual: 305000, forecast: 310000, budget: 380000 },
+    { month: "Nov", actual: 298000, forecast: 302000, budget: 380000 },
+    { month: "Dec", actual: 289000, forecast: 295000, budget: 380000 },
+];
+
+const serviceBreakdown = [
+    { service: "EC2", cost: 98400, prev: 118200, pct: 34 },
+    { service: "RDS", cost: 52200, prev: 58900, pct: 18 },
+    { service: "S3", cost: 37700, prev: 35100, pct: 13 },
+    { service: "Lambda", cost: 31900, prev: 28700, pct: 11 },
+    { service: "EKS", cost: 26100, prev: 31200, pct: 9 },
+    { service: "CloudFront", cost: 17400, prev: 16800, pct: 6 },
+    { service: "Other", cost: 25300, prev: 28100, pct: 9 },
+];
+
+const teamAllocation = [
+    { team: "Platform", cost: 89200, color: "#22d3ee" },
+    { team: "Payments", cost: 67400, color: "#a78bfa" },
+    { team: "Data Eng", cost: 52100, color: "#4ade80" },
+    { team: "Frontend", cost: 31800, color: "#fb923c" },
+    { team: "ML/AI", cost: 28900, color: "#f472b6" },
+    { team: "Shared", cost: 19600, color: "#64748b" },
+];
+
+const savingsPlanData = [
+    { month: "Jul", coverage: 58, utilization: 72, onDemand: 42 },
+    { month: "Aug", coverage: 63, utilization: 78, onDemand: 37 },
+    { month: "Sep", coverage: 68, utilization: 84, onDemand: 32 },
+    { month: "Oct", coverage: 74, utilization: 89, onDemand: 26 },
+    { month: "Nov", coverage: 78, utilization: 92, onDemand: 22 },
+    { month: "Dec", coverage: 82, utilization: 95, onDemand: 18 },
+];
+
+const anomalies = [
+    { id: 1, date: "Dec 14", service: "Lambda", spike: "+312%", cost: "\u20AC4,280", cause: "Recursive invocation in prod", status: "resolved", severity: "high" },
+    { id: 2, date: "Dec 11", service: "S3", spike: "+89%", cost: "\u20AC1,640", cause: "Uncompressed log ingestion", status: "resolved", severity: "medium" },
+    { id: 3, date: "Dec 08", service: "EC2", spike: "+45%", cost: "\u20AC2,910", cause: "Auto-scale stuck at max", status: "investigating", severity: "medium" },
+    { id: 4, date: "Dec 03", service: "RDS", spike: "+67%", cost: "\u20AC3,450", cause: "Snapshot retention misconfigured", status: "resolved", severity: "high" },
+];
+
+const recommendations = [
+    { id: 1, title: "Right-size 23 EC2 instances", savings: "\u20AC18,400/mo", effort: "Low", impact: "High", detail: "23 instances averaging <15% CPU. Downsize from m5.2xlarge to m5.xlarge." },
+    { id: 2, title: "Delete 47 unattached EBS volumes", savings: "\u20AC3,200/mo", effort: "Low", impact: "Medium", detail: "47 gp3 volumes orphaned from terminated instances. Total: 12.4 TB." },
+    { id: 3, title: "Increase Savings Plan coverage to 85%", savings: "\u20AC12,600/mo", effort: "Medium", impact: "High", detail: "Current coverage at 82%. Additional 3-yr compute SP would save 12.6k/mo." },
+    { id: 4, title: "Enable S3 Intelligent-Tiering", savings: "\u20AC5,800/mo", effort: "Low", impact: "Medium", detail: "38 buckets with infrequent access patterns still on S3 Standard." },
+    { id: 5, title: "Migrate 3 RDS instances to Graviton", savings: "\u20AC4,100/mo", effort: "Medium", impact: "Medium", detail: "db.r5.2xlarge \u2192 db.r7g.2xlarge. ~20% price-performance improvement." },
+];
+
+const dailySpend = Array.from({ length: 31 }, (_, i) => {
+    const base = 9200 + Math.sin(i * 0.5) * 800 + (i % 7 < 2 ? -1200 : 0);
+    const anomaly = i === 13 ? 4280 : i === 10 ? 1640 : 0;
+    return { day: i + 1, cost: Math.round(base + anomaly), anomaly: anomaly > 0 };
+});
+
+const taggingCompliance = [
+    { resource: "EC2", compliant: 294, total: 312 },
+    { resource: "RDS", compliant: 41, total: 47 },
+    { resource: "S3", compliant: 117, total: 128 },
+    { resource: "Lambda", compliant: 205, total: 284 },
+    { resource: "EKS", compliant: 17, total: 18 },
+];
+
+// ── HELPERS ────────────────────────────────────────────────────────────
+const fmt = (n) => "\u20AC" + (n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "k" : n.toLocaleString());
+const fmtFull = (n) => "\u20AC" + n.toLocaleString();
+
+const CustomTooltip = ({ active, payload, label, formatter }) => {
+    if (!active || !payload || !payload.length) return null;
+    return (
+        <div style={{ background: "#18181b", border: "1px solid #333338", borderRadius: 8, padding: "10px 14px", fontSize: 12, zIndex: 100 }}>
+            <div style={{ color: "#71717a", marginBottom: 4, fontWeight: 600 }}>{label}</div>
+            {payload.map((p, i) => (
+                <div key={i} style={{ color: p.color || p.stroke || "#e4e4e7", display: "flex", gap: 12, justifyContent: "space-between", minWidth: 140 }}>
+                    <span>{p.name}</span>
+                    <span style={{ fontWeight: 600, fontFamily: "var(--font-mono)" }}>{formatter ? formatter(p.value) : fmtFull(p.value)}</span>
+                </div>
+            ))}
+        </div>
+    );
+};
+
+// ── KPI COMPONENT ──────────────────────────────────────────────────────
+const KPI = ({ label, value, sub, trend, trendDir }) => (
+    <div style={{
+        background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 10, padding: "20px 22px",
+        flex: 1, minWidth: 160,
+    }}>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>{label}</div>
+        <div style={{ fontSize: 28, fontWeight: 700, fontFamily: "var(--font-mono)", color: "var(--text)", letterSpacing: -1 }}>{value}</div>
+        <div style={{ fontSize: 12, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}>
+            {trend && (
+                <span style={{
+                    color: trendDir === "down" ? "var(--green)" : trendDir === "up" ? "var(--red)" : "var(--text-muted)",
+                    fontWeight: 600, fontFamily: "var(--font-mono)"
+                }}>
+                    {trendDir === "down" ? "\u2193" : trendDir === "up" ? "\u2191" : ""} {trend}
+                </span>
+            )}
+            {sub && <span style={{ color: "var(--text-dim)" }}>{sub}</span>}
+        </div>
+    </div>
+);
+
+// ── TAB CONFIG ─────────────────────────────────────────────────────────
+const tabs = ["Overview", "Services", "Teams", "Savings Plans", "Anomalies", "Recommendations", "Tagging"];
+
+// ── MAIN APP ───────────────────────────────────────────────────────────
+function App() {
+    const [activeTab, setActiveTab] = useState("Overview");
+    const [expandedRec, setExpandedRec] = useState(null);
+
+    const totalSavings = useMemo(() => recommendations.reduce((a, r) => a + parseInt(r.savings.replace(/[^0-9]/g, "")), 0), []);
+    const currentSpend = monthlySpend[monthlySpend.length - 1].actual;
+    const prevSpend = monthlySpend[0].actual;
+    const spendChange = (((currentSpend - prevSpend) / prevSpend) * 100).toFixed(1);
+
+    return (
+        <div style={{ minHeight: "100vh" }}>
+            {/* Header */}
+            <div style={{
+                borderBottom: "1px solid var(--border)", padding: "14px 28px",
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                background: "rgba(17,17,19,0.9)", backdropFilter: "blur(12px)",
+                position: "sticky", top: 0, zIndex: 50,
+            }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{
+                        width: 32, height: 32, borderRadius: 8,
+                        background: "linear-gradient(135deg, #22d3ee, #a78bfa)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 14, fontWeight: 700, color: "#0a0a0b"
+                    }}>F</div>
+                    <div>
+                        <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: -0.3 }}>FinOps Dashboard</div>
+                        <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Demo \u2014 Sample Data</div>
+                    </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                    <a href="portfolio.html" style={{
+                        fontSize: 12, color: "var(--text-muted)", textDecoration: "none",
+                        padding: "6px 14px", border: "1px solid var(--border)", borderRadius: 6,
+                        transition: "all 0.2s",
+                    }}>\u2190 Back to Portfolio</a>
+                    <div style={{
+                        fontSize: 11, color: "var(--green)", background: "var(--green-dim)",
+                        border: "1px solid rgba(74,222,128,0.15)", borderRadius: 100,
+                        padding: "4px 12px", fontFamily: "var(--font-mono)", fontWeight: 600,
+                    }}>\u25CF Live</div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Dec 2024</div>
+                </div>
+            </div>
+
+            <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 28px" }}>
+                {/* Tabs */}
+                <div style={{
+                    display: "flex", gap: 4, marginBottom: 28, overflowX: "auto",
+                    borderBottom: "1px solid var(--border)", paddingBottom: 0,
+                }}>
+                    {tabs.map(tab => (
+                        <button key={tab} onClick={() => setActiveTab(tab)} style={{
+                            padding: "10px 18px", fontSize: 13, fontWeight: activeTab === tab ? 600 : 400,
+                            color: activeTab === tab ? "var(--accent)" : "var(--text-muted)",
+                            background: "none", border: "none", cursor: "pointer",
+                            borderBottom: activeTab === tab ? "2px solid var(--accent)" : "2px solid transparent",
+                            transition: "all 0.2s", whiteSpace: "nowrap", fontFamily: "inherit",
+                        }}>{tab}</button>
+                    ))}
+                </div>
+
+                {/* ═══ OVERVIEW ═══ */}
+                {activeTab === "Overview" && (
+                    <div>
+                        <div style={{ display: "flex", gap: 12, marginBottom: 28, flexWrap: "wrap" }}>
+                            <KPI label="Monthly Spend" value={fmt(currentSpend)} trend={spendChange + "%"} trendDir="down" sub="vs Jan" />
+                            <KPI label="Annual Run Rate" value={fmt(currentSpend * 12)} trend="-25.3%" trendDir="down" sub="vs start" />
+                            <KPI label="Potential Savings" value={fmt(totalSavings) + "/mo"} sub="5 actions identified" />
+                            <KPI label="SP Coverage" value="82%" trend="+24pp" trendDir="down" sub="since Jul" />
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                            {/* Monthly Trend */}
+                            <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
+                                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Monthly Spend Trend</div>
+                                <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 20 }}>Actual vs Forecast vs Budget</div>
+                                <ResponsiveContainer width="100%" height={220}>
+                                    <AreaChart data={monthlySpend}>
+                                        <defs>
+                                            <linearGradient id="gActual" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.15} />
+                                                <stop offset="95%" stopColor="#22d3ee" stopOpacity={0} />
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#222225" />
+                                        <XAxis dataKey="month" tick={{ fill: "#52525b", fontSize: 11 }} axisLine={false} tickLine={false} />
+                                        <YAxis tick={{ fill: "#52525b", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => fmt(v)} width={50} />
+                                        <Tooltip content={<CustomTooltip />} />
+                                        <Area type="monotone" dataKey="budget" stroke="#333338" strokeDasharray="4 4" fill="none" name="Budget" strokeWidth={1.5} />
+                                        <Area type="monotone" dataKey="forecast" stroke="#71717a" fill="none" name="Forecast" strokeWidth={1.5} strokeDasharray="2 2" />
+                                        <Area type="monotone" dataKey="actual" stroke="#22d3ee" fill="url(#gActual)" name="Actual" strokeWidth={2} />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            </div>
+                            {/* Daily Spend */}
+                            <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
+                                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Daily Spend \u2014 December</div>
+                                <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 20 }}>Red bars indicate detected anomalies</div>
+                                <ResponsiveContainer width="100%" height={220}>
+                                    <BarChart data={dailySpend}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#222225" />
+                                        <XAxis dataKey="day" tick={{ fill: "#52525b", fontSize: 10 }} axisLine={false} tickLine={false} />
+                                        <YAxis tick={{ fill: "#52525b", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => fmt(v)} width={42} />
+                                        <Tooltip content={<CustomTooltip />} />
+                                        <Bar dataKey="cost" name="Daily Cost" radius={[3, 3, 0, 0]}>
+                                            {dailySpend.map((d, i) => (
+                                                <Cell key={i} fill={d.anomaly ? "#f87171" : "#22d3ee"} fillOpacity={d.anomaly ? 0.8 : 0.5} />
+                                            ))}
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+                        {/* Team Pie + Top Services */}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                            <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
+                                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Cost by Team</div>
+                                <div style={{ display: "flex", alignItems: "center" }}>
+                                    <ResponsiveContainer width="50%" height={180}>
+                                        <PieChart>
+                                            <Pie data={teamAllocation} dataKey="cost" cx="50%" cy="50%" innerRadius={45} outerRadius={75} paddingAngle={2} strokeWidth={0}>
+                                                {teamAllocation.map((t, i) => <Cell key={i} fill={t.color} />)}
+                                            </Pie>
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                    <div style={{ flex: 1 }}>
+                                        {teamAllocation.map(t => (
+                                            <div key={t.team} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, fontSize: 12 }}>
+                                                <div style={{ width: 8, height: 8, borderRadius: 2, background: t.color, flexShrink: 0 }} />
+                                                <span style={{ color: "#a1a1aa", flex: 1 }}>{t.team}</span>
+                                                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>{fmt(t.cost)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
+                                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Top Services (Dec)</div>
+                                {serviceBreakdown.slice(0, 5).map(s => {
+                                    const change = ((s.cost - s.prev) / s.prev * 100).toFixed(0);
+                                    return (
+                                        <div key={s.service} style={{ marginBottom: 12 }}>
+                                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
+                                                <span style={{ color: "#a1a1aa" }}>{s.service}</span>
+                                                <span>
+                                                    <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>{fmt(s.cost)}</span>
+                                                    <span style={{ marginLeft: 8, fontSize: 11, fontFamily: "var(--font-mono)", color: change < 0 ? "#4ade80" : "#f87171" }}>{change > 0 ? "+" : ""}{change}%</span>
+                                                </span>
+                                            </div>
+                                            <div style={{ height: 4, background: "#222225", borderRadius: 2 }}>
+                                                <div style={{ height: "100%", borderRadius: 2, width: s.pct + "%", background: "linear-gradient(90deg, #22d3ee, rgba(34,211,238,0.4))" }} />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ═══ SERVICES ═══ */}
+                {activeTab === "Services" && (
+                    <div>
+                        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginBottom: 16 }}>
+                            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 20 }}>Service Cost Breakdown \u2014 December</div>
+                            <ResponsiveContainer width="100%" height={300}>
+                                <BarChart data={serviceBreakdown} layout="vertical">
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#222225" horizontal={false} />
+                                    <XAxis type="number" tick={{ fill: "#52525b", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => fmt(v)} />
+                                    <YAxis type="category" dataKey="service" tick={{ fill: "#a1a1aa", fontSize: 12 }} axisLine={false} tickLine={false} width={80} />
+                                    <Tooltip content={<CustomTooltip />} />
+                                    <Bar dataKey="prev" fill="#333338" name="Previous Month" radius={[0, 3, 3, 0]} barSize={16} />
+                                    <Bar dataKey="cost" fill="#22d3ee" name="Current Month" radius={[0, 3, 3, 0]} barSize={16} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                                <thead>
+                                    <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                                        {["Service", "Current", "Previous", "Change", "% of Total"].map(h => (
+                                            <th key={h} style={{ padding: "14px 20px", textAlign: "left", color: "var(--text-dim)", fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>{h}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {serviceBreakdown.map(s => {
+                                        const change = ((s.cost - s.prev) / s.prev * 100).toFixed(1);
+                                        return (
+                                            <tr key={s.service} style={{ borderBottom: "1px solid #1a1a1e" }}>
+                                                <td style={{ padding: "12px 20px", fontWeight: 600 }}>{s.service}</td>
+                                                <td style={{ padding: "12px 20px", fontFamily: "var(--font-mono)" }}>{fmtFull(s.cost)}</td>
+                                                <td style={{ padding: "12px 20px", fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>{fmtFull(s.prev)}</td>
+                                                <td style={{ padding: "12px 20px", fontFamily: "var(--font-mono)", color: change < 0 ? "var(--green)" : "var(--red)" }}>{change > 0 ? "+" : ""}{change}%</td>
+                                                <td style={{ padding: "12px 20px", fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>{s.pct}%</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {/* ═══ TEAMS ═══ */}
+                {activeTab === "Teams" && (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
+                            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 20 }}>Spend by Team</div>
+                            <ResponsiveContainer width="100%" height={280}>
+                                <PieChart>
+                                    <Pie data={teamAllocation} dataKey="cost" cx="50%" cy="50%" innerRadius={60} outerRadius={110} paddingAngle={3} strokeWidth={0}>
+                                        {teamAllocation.map((t, i) => <Cell key={i} fill={t.color} />)}
+                                    </Pie>
+                                    <Tooltip content={<CustomTooltip />} />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+                        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
+                            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 20 }}>Team Details</div>
+                            {teamAllocation.map(t => {
+                                const pct = ((t.cost / teamAllocation.reduce((a, x) => a + x.cost, 0)) * 100).toFixed(0);
+                                return (
+                                    <div key={t.team} style={{ marginBottom: 16 }}>
+                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                                <div style={{ width: 10, height: 10, borderRadius: 3, background: t.color }} />
+                                                <span style={{ fontSize: 13, fontWeight: 600 }}>{t.team}</span>
+                                            </div>
+                                            <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 14 }}>{fmtFull(t.cost)}</span>
+                                        </div>
+                                        <div style={{ height: 6, background: "#222225", borderRadius: 3 }}>
+                                            <div style={{ height: "100%", borderRadius: 3, width: pct + "%", background: t.color, transition: "width 0.5s" }} />
+                                        </div>
+                                        <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4 }}>{pct}% of total</div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {/* ═══ SAVINGS PLANS ═══ */}
+                {activeTab === "Savings Plans" && (
+                    <div>
+                        <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+                            <KPI label="Coverage" value="82%" trend="+24pp" trendDir="down" sub="since Jul" />
+                            <KPI label="Utilization" value="95%" trend="+23pp" trendDir="down" sub="since Jul" />
+                            <KPI label="On-Demand %" value="18%" trend="-24pp" trendDir="down" sub="since Jul" />
+                            <KPI label="Monthly Savings" value="\u20AC41.2k" sub="from commitments" />
+                        </div>
+                        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
+                            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Coverage & Utilization Trend</div>
+                            <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 20 }}>Tracking Savings Plan effectiveness since implementation</div>
+                            <ResponsiveContainer width="100%" height={300}>
+                                <LineChart data={savingsPlanData}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#222225" />
+                                    <XAxis dataKey="month" tick={{ fill: "#52525b", fontSize: 11 }} axisLine={false} tickLine={false} />
+                                    <YAxis tick={{ fill: "#52525b", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => v + "%"} domain={[0, 100]} />
+                                    <Tooltip content={<CustomTooltip formatter={v => v + "%"} />} />
+                                    <Line type="monotone" dataKey="coverage" stroke="#22d3ee" strokeWidth={2.5} name="Coverage" dot={{ fill: "#22d3ee", r: 4 }} />
+                                    <Line type="monotone" dataKey="utilization" stroke="#4ade80" strokeWidth={2.5} name="Utilization" dot={{ fill: "#4ade80", r: 4 }} />
+                                    <Line type="monotone" dataKey="onDemand" stroke="#f87171" strokeWidth={2} strokeDasharray="4 4" name="On-Demand %" dot={{ fill: "#f87171", r: 3 }} />
+                                    <Legend wrapperStyle={{ fontSize: 12, color: "#71717a" }} />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+                )}
+
+                {/* ═══ ANOMALIES ═══ */}
+                {activeTab === "Anomalies" && (
+                    <div>
+                        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginBottom: 16 }}>
+                            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Daily Spend with Anomaly Detection</div>
+                            <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 20 }}>Threshold: \u00B130% from rolling 7-day average</div>
+                            <ResponsiveContainer width="100%" height={200}>
+                                <BarChart data={dailySpend}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#222225" />
+                                    <XAxis dataKey="day" tick={{ fill: "#52525b", fontSize: 10 }} axisLine={false} tickLine={false} />
+                                    <YAxis tick={{ fill: "#52525b", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => fmt(v)} width={42} />
+                                    <Tooltip content={<CustomTooltip />} />
+                                    <Bar dataKey="cost" name="Daily Cost" radius={[3, 3, 0, 0]}>
+                                        {dailySpend.map((d, i) => (
+                                            <Cell key={i} fill={d.anomaly ? "#f87171" : "#22d3ee"} fillOpacity={d.anomaly ? 0.9 : 0.4} />
+                                        ))}
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+                            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", fontSize: 14, fontWeight: 600 }}>Recent Anomalies</div>
+                            {anomalies.map(a => (
+                                <div key={a.id} style={{ padding: "16px 20px", borderBottom: "1px solid #1a1a1e", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: a.severity === "high" ? "#f87171" : "#fb923c", flexShrink: 0 }} />
+                                    <div style={{ flex: 1, minWidth: 200 }}>
+                                        <div style={{ fontSize: 13, fontWeight: 600 }}>{a.service} \u2014 {a.spike} spike</div>
+                                        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{a.cause}</div>
+                                    </div>
+                                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 600, color: "#f87171" }}>{a.cost}</div>
+                                    <div style={{ fontSize: 11, color: "var(--text-dim)" }}>{a.date}</div>
+                                    <div style={{
+                                        fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 100,
+                                        background: a.status === "resolved" ? "rgba(74,222,128,0.08)" : "rgba(251,146,60,0.08)",
+                                        color: a.status === "resolved" ? "#4ade80" : "#fb923c",
+                                        border: "1px solid " + (a.status === "resolved" ? "rgba(74,222,128,0.15)" : "rgba(251,146,60,0.15)"),
+                                    }}>{a.status}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* ═══ RECOMMENDATIONS ═══ */}
+                {activeTab === "Recommendations" && (
+                    <div>
+                        <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+                            <KPI label="Total Potential Savings" value={fmt(totalSavings) + "/mo"} sub={recommendations.length + " actions"} />
+                            <KPI label="Annualized" value={fmt(totalSavings * 12) + "/yr"} />
+                            <KPI label="High Impact" value={recommendations.filter(r => r.impact === "High").length.toString()} sub="actions" />
+                            <KPI label="Quick Wins" value={recommendations.filter(r => r.effort === "Low").length.toString()} sub="low effort" />
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            {recommendations.map(r => (
+                                <div key={r.id} onClick={() => setExpandedRec(expandedRec === r.id ? null : r.id)} style={{
+                                    background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 10,
+                                    padding: "18px 22px", cursor: "pointer", transition: "all 0.2s",
+                                }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                                        <div style={{
+                                            fontSize: 22, width: 40, height: 40, borderRadius: 8,
+                                            display: "flex", alignItems: "center", justifyContent: "center",
+                                            background: r.impact === "High" ? "var(--accent-dim)" : "var(--orange-dim)",
+                                            border: "1px solid " + (r.impact === "High" ? "rgba(34,211,238,0.12)" : "rgba(251,146,60,0.12)"),
+                                            flexShrink: 0,
+                                        }}>{r.impact === "High" ? "\u26A1" : "\uD83D\uDCA1"}</div>
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ fontSize: 14, fontWeight: 600 }}>{r.title}</div>
+                                            <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
+                                                <span style={{ fontSize: 11, color: "var(--green)", fontFamily: "var(--font-mono)", fontWeight: 600 }}>{r.savings}</span>
+                                                <span style={{ fontSize: 11, color: "var(--text-dim)" }}>Effort: {r.effort}</span>
+                                                <span style={{ fontSize: 11, color: "var(--text-dim)" }}>Impact: {r.impact}</span>
+                                            </div>
+                                        </div>
+                                        <div style={{ color: "var(--text-dim)", fontSize: 18, transform: expandedRec === r.id ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>{"\u25BE"}</div>
+                                    </div>
+                                    {expandedRec === r.id && (
+                                        <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)", fontSize: 13, color: "#a1a1aa", lineHeight: 1.6 }}>{r.detail}</div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* ═══ TAGGING ═══ */}
+                {activeTab === "Tagging" && (
+                    <div>
+                        <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+                            <KPI label="Overall Compliance" value="88%" trend="+12pp" trendDir="down" sub="since Aug" />
+                            <KPI label="Tagged Resources" value="713" sub="of 789 total" />
+                            <KPI label="Untagged" value="76" sub="resources" />
+                            <KPI label="Unallocated Spend" value="\u20AC11.2k" sub="4% of total" />
+                        </div>
+                        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
+                            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 20 }}>Tagging Compliance by Resource Type</div>
+                            {taggingCompliance.map(t => {
+                                const pct = Math.round((t.compliant / t.total) * 100);
+                                return (
+                                    <div key={t.resource} style={{ marginBottom: 18 }}>
+                                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
+                                            <span style={{ fontWeight: 600 }}>{t.resource}</span>
+                                            <span style={{ fontFamily: "var(--font-mono)" }}>
+                                                <span style={{ color: pct >= 90 ? "#4ade80" : pct >= 80 ? "#fb923c" : "#f87171" }}>{pct}%</span>
+                                                <span style={{ color: "var(--text-dim)", marginLeft: 8 }}>({t.compliant}/{t.total})</span>
+                                            </span>
+                                        </div>
+                                        <div style={{ height: 8, background: "#222225", borderRadius: 4, overflow: "hidden" }}>
+                                            <div style={{
+                                                height: "100%", borderRadius: 4, width: pct + "%",
+                                                background: pct >= 90 ? "#4ade80" : pct >= 80 ? "#fb923c" : "#f87171",
+                                                transition: "width 0.6s ease-out",
+                                            }} />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {/* Footer */}
+                <div style={{ borderTop: "1px solid var(--border)", marginTop: 80, paddingTop: 24, display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--text-dim)" }}>
+                    <span>FinOps Dashboard Demo \u2014 Built with React + Recharts</span>
+                    <span>Sample data for portfolio demonstration purposes</span>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
