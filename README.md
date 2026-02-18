@@ -118,4 +118,4 @@ MIT
 
 ## Author
 
-Built by [Your Name](https://yourname.cloud) — AWS Solutions Architect & FinOps Practitioner.
+Built by [Bator Nemeth](https://yourname.cloud) — AWS Solutions Architect & FinOps Practitioner.
